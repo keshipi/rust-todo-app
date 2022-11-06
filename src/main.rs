@@ -1,27 +1,32 @@
 mod handlers;
 mod repositories;
 
-use crate::repositories::{TodoRepository, TodoRepositoryForMemory};
+use crate::repositories::{TodoRepository, TodoRepositoryForDb};
 
 use axum::{
     extract::Extension,
     routing::{get, post},
-    Router
+    Router,
 };
+use dotenv::dotenv;
 use handlers::{all_todo, create_todo, delete_todo, find_todo, update_todo};
+use sqlx::PgPool;
 use std::net::SocketAddr;
-use std::{
-    env,
-    sync::Arc,
-};
+use std::{env, sync::Arc};
 
 #[tokio::main]
 async fn main() {
     let log_level = env::var("RUST_LOG").unwrap_or("info".to_string());
     env::set_var("RUST_LOG", log_level);
     tracing_subscriber::fmt::init();
+    dotenv().ok();
 
-    let repository = TodoRepositoryForMemory::new();
+    let database_url = &env::var("DATABASE_URL").expect("undefined [DATABASE_URL]");
+    tracing::debug!("start connect database...");
+    let pool = PgPool::connect(database_url)
+        .await
+        .expect(&format!("fail connect database, url is[{}]", database_url));
+    let repository = TodoRepositoryForDb::new(pool.clone());
     let app = create_app(repository);
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     tracing::debug!("listening on {}", addr);
@@ -52,12 +57,12 @@ async fn root() -> &'static str {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::repositories::{CreateTodo, Todo};
+    use crate::repositories::{test_utils::TodoRepositoryForMemory, CreateTodo, Todo};
     use axum::response::Response;
     use axum::{
-            body::Body,
-            http::{header, Method, Request, StatusCode},
-        };
+        body::Body,
+        http::{header, Method, Request, StatusCode},
+    };
     use tower::ServiceExt;
 
     fn build_todo_req_with_json(path: &str, method: Method, json_body: String) -> Request<Body> {
@@ -88,7 +93,7 @@ mod test {
     #[tokio::test]
     async fn should_created_todo() {
         let expected = Todo::new(1, "should_return_created_todo".to_string());
-        
+
         let repository = TodoRepositoryForMemory::new();
         let req = build_todo_req_with_json(
             "/todos",
@@ -149,7 +154,8 @@ mod test {
                 "id": 1,
                 "text": "should_update_todo",
                 "completed": false
-            }"#.to_string(),
+            }"#
+            .to_string(),
         );
         let res = create_app(repository).oneshot(req).await.unwrap();
         let todo = res_to_todo(res).await;
