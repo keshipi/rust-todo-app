@@ -10,7 +10,7 @@ use anyhow::{Context, Ok};
 #[derive(Debug, Error)]
 enum RepositoryError {
     #[error("NotFound, id is {0}")]
-    NotFound(i32),              
+    NotFound(i32),
 }
 
 pub trait TodoRepository: Clone + std::marker::Send + std::marker::Sync + 'static {
@@ -31,6 +31,13 @@ pub struct Todo {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct CreateTodo {
     text: String,
+}
+
+#[cfg(test)]
+impl CreateTodo {
+    pub fn new(text: String) -> Self {
+        Self { text }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
